@@ -95,6 +95,10 @@ jobs:
           }
           $top = ($by.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 22 | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ' | '
           Write-Host "::notice title=size by object::$top"
+          $secsum = ($sec | Group-Object n | ForEach-Object { [pscustomobject]@{n=$_.Name;s=($_.Group | Measure-Object s -Sum).Sum} } | Sort-Object s -Descending | Select-Object -First 16 | ForEach-Object { "$($_.n)=$($_.s)" }) -join ' | '
+          Write-Host "::notice title=size by section name::$secsum"
+          $fm = (Select-String -Path "$env:RUNNER_TEMP\fw-build.log" -Pattern 'FM1:' -ErrorAction SilentlyContinue | Select-Object -First 1).Line
+          Write-Host "::notice title=image line::$fm"
           $mine = ($by.GetEnumerator() | Where-Object { $_.Key -match 'polivoks' } | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ' | '
           Write-Host "::notice title=polivoks objects::$mine"
           $big = ($sec | Sort-Object s -Descending | Select-Object -First 22 | ForEach-Object { "$($_.n)=$($_.s)($($_.f))" }) -join ' | '
