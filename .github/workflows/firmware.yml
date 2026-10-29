@@ -60,8 +60,22 @@ jobs:
           Write-Host "::notice title=toolchain moved::$((Get-ChildItem C:\JL\pi32 | ForEach-Object Name) -join ', ')"
 
       - name: Build firmware
+        id: fw
         shell: pwsh
-        run: ./sdk/Build.ps1 -FirmwareOnly -Toolchain 'C:\JL\pi32'
+        run: |
+          $log = "$env:RUNNER_TEMP\fw-build.log"
+          try { ./sdk/Build.ps1 -FirmwareOnly -Toolchain 'C:\JL\pi32' *>&1 | Tee-Object -FilePath $log }
+          catch { $_ | Out-String | Tee-Object -FilePath $log -Append; throw }
+
+      - name: Report build errors as annotations
+        if: failure() && steps.fw.outcome == 'failure'
+        shell: pwsh
+        run: |
+          # Job logs are not downloadable, so surface the tail of the build log in annotations.
+          $lines = Get-Content "$env:RUNNER_TEMP\fw-build.log" -Tail 40 -ErrorAction SilentlyContinue
+          $err = @($lines | Where-Object { $_ -match 'error|Error|throw|Audio callback|outside|absent|undefined' })
+          $msg = (($err + '---' + $lines) | ForEach-Object { $_.Trim() } | Select-Object -First 45) -join ' | '
+          Write-Host "::error title=firmware build log::$msg"
 
       - name: Build web preview
         shell: pwsh
