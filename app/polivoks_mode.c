@@ -1,6 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-only WITH GPL-3.0-linking-exception */
 #include "polivoks_mode.h"
+#ifdef FM1_HOST_TEST
+/* Browser preview: no audio interrupt, so there is nothing to exclude. */
+static uint32_t fm1_device_irq_save(void) { return 0; }
+static void fm1_device_irq_restore(uint32_t state) { (void)state; }
+#else
 #include "fm1_device.h"
+#endif
 #include "instrument.h"
 
 enum { EV_NOTE, EV_PEDAL, EV_BEND, EV_MOD, EV_PARAM, EV_PANIC };

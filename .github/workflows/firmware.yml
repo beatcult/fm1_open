@@ -105,8 +105,21 @@ jobs:
           Write-Host "::notice title=largest sections::$big"
 
       - name: Build web preview
+        id: web
         shell: pwsh
-        run: ./tools/Build-Web.ps1 -LocalPreview
+        run: |
+          $log = "$env:RUNNER_TEMP\web-build.log"
+          try { ./tools/Build-Web.ps1 -LocalPreview *>&1 | Tee-Object -FilePath $log }
+          catch { $_ | Out-String | Tee-Object -FilePath $log -Append; throw }
+
+      - name: Report web build errors as annotations
+        if: failure() && steps.web.outcome == 'failure'
+        shell: pwsh
+        run: |
+          $lines = Get-Content "$env:RUNNER_TEMP\web-build.log" -Tail 60 -ErrorAction SilentlyContinue
+          $err = @($lines | Where-Object { $_ -match 'error|undefined|Error|throw' })
+          $msg = (($err + '---' + $lines) | ForEach-Object { $_.Trim() } | Select-Object -First 50) -join ' | '
+          Write-Host "::error title=web build log::$msg"
 
       - uses: actions/upload-artifact@v4
         if: always()
