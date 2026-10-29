@@ -35,23 +35,30 @@ jobs:
       - name: Install JieLi toolchain 2.5.3
         if: steps.tc.outputs.cache-hit != 'true'
         shell: pwsh
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
-          function Try-Install($label, $args) {
-            Write-Host "== $label"
-            $p = Start-Process "$env:RUNNER_TEMP\jl.exe" -ArgumentList $args -PassThru
-            if (!$p.WaitForExit(240000)) { Write-Host "$label timed out; killing"; Stop-Process -Id $p.Id -Force; Get-Process | Where-Object { $_.Path -like "*$env:RUNNER_TEMP*" } | Stop-Process -Force -ErrorAction SilentlyContinue }
-            else { Write-Host "$label exit $($p.ExitCode)" }
-            Test-Path C:\JL\pi32\bin\clang.exe
+          # The installer's type is undocumented and a GUI wizard hangs CI, so unpack it with 7-Zip.
+          # Diagnostics go to annotations (::notice::) because job logs may not be downloadable.
+          $exe = "$env:RUNNER_TEMP\jl.exe"
+          $7z = 'C:\Program Files\7-Zip\7z.exe'
+          $list = (& $7z l $exe 2>&1 | Out-String)
+          $head = ($list -split "`n" | Select-Object -First 25) -join ' | '
+          Write-Host "::notice title=7z list head::$head"
+          $dirs = [regex]::Matches($list, 'pi32[^\s]*clang\.exe') | Select-Object -First 3 | ForEach-Object { $_.Value }
+          Write-Host "::notice title=clang paths in archive::$($dirs -join ' ; ')"
+          New-Item -ItemType Directory -Force C:\JL_extract | Out-Null
+          & $7z x -y -oC:\JL_extract $exe | Select-Object -Last 3 | ForEach-Object { Write-Host $_ }
+          $clang = Get-ChildItem C:\JL_extract -Recurse -Filter clang.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (!$clang) {
+            $top = (Get-ChildItem C:\JL_extract | Select-Object -First 20 | ForEach-Object Name) -join ', '
+            Write-Host "::error title=no clang.exe after 7z::top-level: $top"
+            throw 'clang.exe not found after extraction'
           }
-          $ok = Try-Install 'NSIS' @('/S','/D=C:\JL')
-          if (!$ok) { $ok = Try-Install 'Inno' @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/DIR=C:\JL') }
-          if (!$ok) { $ok = Try-Install 'MSI-style' @('/quiet','/qn','INSTALLDIR=C:\JL') }
-          if (!$ok) {
-            Get-ChildItem C:\ -Directory | Select-Object -ExpandProperty FullName
-            Get-ChildItem C:\JL -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 50 FullName
-            throw 'Silent install did not produce C:\JL\pi32\bin\clang.exe'
-          }
+          Write-Host "::notice title=clang found::$($clang.FullName)"
+          $pi32 = Split-Path -Parent (Split-Path -Parent $clang.FullName)
+          New-Item -ItemType Directory -Force C:\JL | Out-Null
+          Move-Item $pi32 C:\JL\pi32
+          Write-Host "::notice title=toolchain moved::$((Get-ChildItem C:\JL\pi32 | ForEach-Object Name) -join ', ')"
 
       - name: Build firmware
         shell: pwsh
