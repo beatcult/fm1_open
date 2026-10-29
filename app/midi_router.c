@@ -1,5 +1,4 @@
 /* SPDX-License-Identifier: GPL-3.0-only WITH GPL-3.0-linking-exception */
-#include "polivoks_mode.h"
 #include "instrument.h"
 #include "fm1_engine_control.h"
 #include <string.h>
@@ -282,7 +281,6 @@ int groove_midi_local(const uint8_t *m, size_t n)
     }
     unsigned ch = m[0] & 15U, targets = 0;
     if (n != size(m[0])) return -1;
-    if (polivoks_midi_filter(m, n)) return 0;      /* Polivoks mode: notes and controllers go to the Polivoks */
     for (unsigned t=0;t<GROOVE_TRACKS;++t)
         if (groove_track_role(t) != GROOVE_TRACK_OFF && groove_midi_input_channel(t)==ch) targets |= 1U<<t;
     /* An Off/unmapped channel is intentionally silent, not a queue failure.
@@ -323,7 +321,7 @@ void fm1_app_midi_received(unsigned source, const uint8_t *m, size_t n)
     if (source >= 3 || !m || !n || n > 3) return;
     unsigned clock = m[0] == 0xf8 || m[0] == 0xfa || m[0] == 0xfb || m[0] == 0xfc || m[0] == 0xf2;
     if (clock && !groove_midi_clock_accept(source, m[0])) return;
-    if (!polivoks_midi_filter(m, n)) (void)fm1_midi_post(m, n);
+    (void)fm1_midi_post(m, n);
     if (m[0] == 0xff) enqueue(2, 0, (config.flags | config.thru) & 7U, 0xff, 0, 0);
     if (((config.thru >> 3) & 3U) == source && m[0] != 0xff && (m[0] < 0xf0 || clock)) {
         unsigned ports = config.thru & 7U & ~(1U << source) & fm1_midi_output_ports();
