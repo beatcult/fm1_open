@@ -37,28 +37,21 @@ jobs:
         shell: pwsh
         timeout-minutes: 15
         run: |
-          # The installer's type is undocumented and a GUI wizard hangs CI, so unpack it with 7-Zip.
+          # 7-Zip showed Inno Setup sections (.itext), so use Inno's unattended flags.
           # Diagnostics go to annotations (::notice::) because job logs may not be downloadable.
           $exe = "$env:RUNNER_TEMP\jl.exe"
-          $7z = 'C:\Program Files\7-Zip\7z.exe'
-          $list = (& $7z l $exe 2>&1 | Out-String)
-          $head = ($list -split "`n" | Select-Object -First 25) -join ' | '
-          Write-Host "::notice title=7z list head::$head"
-          $dirs = [regex]::Matches($list, 'pi32[^\s]*clang\.exe') | Select-Object -First 3 | ForEach-Object { $_.Value }
-          Write-Host "::notice title=clang paths in archive::$($dirs -join ' ; ')"
-          New-Item -ItemType Directory -Force C:\JL_extract | Out-Null
-          & $7z x -y -oC:\JL_extract $exe | Select-Object -Last 3 | ForEach-Object { Write-Host $_ }
-          $clang = Get-ChildItem C:\JL_extract -Recurse -Filter clang.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          $log = "$env:RUNNER_TEMP\jl-install.log"
+          $p = Start-Process $exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/DIR=C:\JL',"/LOG=$log" -PassThru
+          if (!$p.WaitForExit(420000)) { Write-Host "::warning title=install timed out::killing"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+          else { Write-Host "::notice title=installer exit::$($p.ExitCode)" }
+          if (Test-Path $log) { $tail = (Get-Content $log -Tail 15) -join ' | '; Write-Host "::notice title=installer log tail::$tail" }
+          $clang = Get-ChildItem C:\ -Recurse -Filter clang.exe -ErrorAction SilentlyContinue -Depth 4 | Where-Object { $_.FullName -like '*pi32*' } | Select-Object -First 1
           if (!$clang) {
-            $top = (Get-ChildItem C:\JL_extract | Select-Object -First 20 | ForEach-Object Name) -join ', '
-            Write-Host "::error title=no clang.exe after 7z::top-level: $top"
-            throw 'clang.exe not found after extraction'
+            $top = (Get-ChildItem C:\JL -ErrorAction SilentlyContinue | Select-Object -First 20 | ForEach-Object Name) -join ', '
+            Write-Host "::error title=no pi32 clang.exe::C:\JL contains: $top"
+            throw 'pi32 clang.exe not found after install'
           }
           Write-Host "::notice title=clang found::$($clang.FullName)"
-          $pi32 = Split-Path -Parent (Split-Path -Parent $clang.FullName)
-          New-Item -ItemType Directory -Force C:\JL | Out-Null
-          Move-Item $pi32 C:\JL\pi32
-          Write-Host "::notice title=toolchain moved::$((Get-ChildItem C:\JL\pi32 | ForEach-Object Name) -join ', ')"
 
       - name: Build firmware
         shell: pwsh
