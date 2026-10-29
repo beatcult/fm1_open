@@ -77,6 +77,29 @@ jobs:
           $msg = (($err + '---' + $lines) | ForEach-Object { $_.Trim() } | Select-Object -First 45) -join ' | '
           Write-Host "::error title=firmware build log::$msg"
 
+      - name: Report image size breakdown
+        if: always() && steps.fw.outcome != 'skipped'
+        shell: pwsh
+        run: |
+          # Annotations only: job logs and artifacts are not downloadable from this environment.
+          $map = Get-ChildItem build -Recurse -Filter sdk.map -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (!$map) { Write-Host "::warning title=size report::no sdk.map"; exit 0 }
+          $by = @{}; $sec = @()
+          foreach ($l in [IO.File]::ReadLines($map.FullName)) {
+            if ($l -match '^\s+(\.[^\s]+)\s+0x([0-9a-fA-F]+)\s+0x([0-9a-fA-F]+)\s+(.+?)\s*$') {
+              $size = [Convert]::ToInt64($Matches[3],16); if ($size -le 0) { continue }
+              $file = $Matches[4] -replace '^.*[\\/]', ''
+              if ($file -match '\(([^)]+)\)$') { $file = $Matches[1] }
+              $by[$file] += $size; $sec += [pscustomobject]@{n=$Matches[1];s=$size;f=$file}
+            }
+          }
+          $top = ($by.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 22 | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ' | '
+          Write-Host "::notice title=size by object::$top"
+          $mine = ($by.GetEnumerator() | Where-Object { $_.Key -match 'polivoks' } | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ' | '
+          Write-Host "::notice title=polivoks objects::$mine"
+          $big = ($sec | Sort-Object s -Descending | Select-Object -First 22 | ForEach-Object { "$($_.n)=$($_.s)($($_.f))" }) -join ' | '
+          Write-Host "::notice title=largest sections::$big"
+
       - name: Build web preview
         shell: pwsh
         run: ./tools/Build-Web.ps1 -LocalPreview
