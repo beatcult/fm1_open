@@ -1,0 +1,52 @@
+name: Firmware build
+
+on:
+  push:
+    branches: [polivoks-duophonic]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache JieLi toolchain
+        id: tc
+        uses: actions/cache@v4
+        with:
+          path: C:\JL
+          key: jieli-toolchain-2.5.3
+
+      - name: Install JieLi toolchain 2.5.3
+        if: steps.tc.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          curl.exe -fL --retry 3 -o "$env:RUNNER_TEMP\jl.exe" https://jl-update.oss-cn-shenzhen.aliyuncs.com/2.5.3.exe
+          # Installer type is not documented: try NSIS-style, then Inno-style silent flags.
+          $p = Start-Process "$env:RUNNER_TEMP\jl.exe" -ArgumentList '/S','/D=C:\JL' -Wait -PassThru
+          Write-Host "NSIS-style exit: $($p.ExitCode)"
+          if (!(Test-Path C:\JL\pi32\bin\clang.exe)) {
+            $p = Start-Process "$env:RUNNER_TEMP\jl.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/DIR=C:\JL' -Wait -PassThru
+            Write-Host "Inno-style exit: $($p.ExitCode)"
+          }
+          if (!(Test-Path C:\JL\pi32\bin\clang.exe)) {
+            Get-ChildItem C:\JL -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 50 FullName
+            throw 'Silent install did not produce C:\JL\pi32\bin\clang.exe'
+          }
+
+      - name: Build firmware
+        shell: pwsh
+        run: ./sdk/Build.ps1 -FirmwareOnly -Toolchain 'C:\JL\pi32'
+
+      - name: Build web preview
+        shell: pwsh
+        run: ./tools/Build-Web.ps1 -LocalPreview
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fm1-build
+          path: build/
+          if-no-files-found: warn
