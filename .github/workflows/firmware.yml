@@ -37,21 +37,27 @@ jobs:
         shell: pwsh
         timeout-minutes: 15
         run: |
-          # 7-Zip showed Inno Setup sections (.itext), so use Inno's unattended flags.
+          # The installer is Inno Setup but pops a Chinese GUI message box that hangs CI
+          # (run 40906427190). Unpack it with innoextract instead of running it.
           # Diagnostics go to annotations (::notice::) because job logs may not be downloadable.
           $exe = "$env:RUNNER_TEMP\jl.exe"
-          $log = "$env:RUNNER_TEMP\jl-install.log"
-          $p = Start-Process $exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/DIR=C:\JL',"/LOG=$log" -PassThru
-          if (!$p.WaitForExit(420000)) { Write-Host "::warning title=install timed out::killing"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
-          else { Write-Host "::notice title=installer exit::$($p.ExitCode)" }
-          if (Test-Path $log) { $tail = (Get-Content $log -Tail 15) -join ' | '; Write-Host "::notice title=installer log tail::$tail" }
-          $clang = Get-ChildItem C:\ -Recurse -Filter clang.exe -ErrorAction SilentlyContinue -Depth 4 | Where-Object { $_.FullName -like '*pi32*' } | Select-Object -First 1
+          choco install innoextract -y --no-progress | Select-Object -Last 3 | ForEach-Object { Write-Host $_ }
+          $ie = (Get-Command innoextract -ErrorAction SilentlyContinue).Source
+          Write-Host "::notice title=innoextract::$ie"
+          New-Item -ItemType Directory -Force C:\JL_extract | Out-Null
+          $out = (& innoextract --silent --extract --output-dir C:\JL_extract $exe 2>&1 | Out-String)
+          Write-Host "::notice title=innoextract output::$(($out -split "`n" | Select-Object -Last 8) -join ' | ')"
+          $clang = Get-ChildItem C:\JL_extract -Recurse -Filter clang.exe -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like '*pi32*' } | Select-Object -First 1
           if (!$clang) {
-            $top = (Get-ChildItem C:\JL -ErrorAction SilentlyContinue | Select-Object -First 20 | ForEach-Object Name) -join ', '
-            Write-Host "::error title=no pi32 clang.exe::C:\JL contains: $top"
-            throw 'pi32 clang.exe not found after install'
+            $top = (Get-ChildItem C:\JL_extract -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 30 | ForEach-Object { $_.FullName.Replace('C:\JL_extract','') }) -join ', '
+            Write-Host "::error title=no pi32 clang.exe::extract contains: $top"
+            throw 'pi32 clang.exe not found after extraction'
           }
           Write-Host "::notice title=clang found::$($clang.FullName)"
+          $pi32 = Split-Path -Parent (Split-Path -Parent $clang.FullName)
+          New-Item -ItemType Directory -Force C:\JL | Out-Null
+          Move-Item $pi32 C:\JL\pi32
+          Write-Host "::notice title=toolchain moved::$((Get-ChildItem C:\JL\pi32 | ForEach-Object Name) -join ', ')"
 
       - name: Build firmware
         shell: pwsh
