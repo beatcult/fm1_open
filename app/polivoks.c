@@ -36,6 +36,8 @@ struct polivoks_bank {
     float cutoff, k, envamt, glide, att, dec, sus, rel, detune;
 };
 
+_Static_assert(sizeof(struct polivoks_bank) <= POLIVOKS_BANK_BYTES, "POLIVOKS_BANK_BYTES too small");
+
 static const char *const wave_names[] = {"Tri", "Saw", "Sqr", "Pulse", "Noise"};
 static const char *const mode_names[] = {"LP", "BP"};
 static const fm1_param_t parameters[POLIVOKS_NPARAMS] = {
@@ -240,7 +242,7 @@ unsigned polivoks_bank_render(polivoks_bank_t *b, int32_t *out)
     if (!polivoks_bank_active(b)) return 0;
     const unsigned wave1 = b->pot[POLIVOKS_WAVE1], wave2 = b->pot[POLIVOKS_WAVE2], bandpass = b->pot[POLIVOKS_MODE];
     const float depth = b->wheel * (1.0f / 127.0f), bend = (float)b->bend * (1.0f / 65536.0f);
-    float acc[POLIVOKS_FRAMES];
+    static float acc[POLIVOKS_FRAMES];   /* audio interrupt only: kept off its stack */
     for (unsigned i = 0; i < POLIVOKS_FRAMES; ++i) acc[i] = 0.0f;
 
     for (unsigned c = 0; c < POLIVOKS_FRAMES / CHUNK; ++c) {

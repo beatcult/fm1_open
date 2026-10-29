@@ -30,6 +30,8 @@ enum {
 enum { POLIVOKS_MODE_LP, POLIVOKS_MODE_BP };
 enum { POLIVOKS_WAVE_TRI, POLIVOKS_WAVE_SAW, POLIVOKS_WAVE_SQR, POLIVOKS_WAVE_PULSE, POLIVOKS_WAVE_NOISE };
 
+/* Opaque; storage must be at least this large and 4-byte aligned. */
+#define POLIVOKS_BANK_BYTES 384
 typedef struct polivoks_bank polivoks_bank_t;
 size_t polivoks_bank_size(void);
 /* Caller owns 4-byte-aligned storage of polivoks_bank_size() bytes. */

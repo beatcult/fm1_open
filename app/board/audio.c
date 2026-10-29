@@ -3,6 +3,7 @@
 #include "fm1_gpio.h"
 #include "fm1_engine_control.h"
 #include "audio_output.h"
+#include "polivoks_mode.h"
 #include <string.h>
 
 #define DMA_ALIGNED __attribute__((aligned(32)))
@@ -44,6 +45,7 @@ FM1_AUDIO_CODE __attribute__((interrupt(""))) void fm1_audio_irq(void)
         ++statistics.overruns;
         return;
     }
+    polivoks_audio_mix(rendered);   /* Polivoks mode: add the app-rendered voices */
     fm1_output_mix(rendered);
     uint32_t flags = fm1_audio_irq_save();
     if (fm1_audio_half_owned(half) &&
