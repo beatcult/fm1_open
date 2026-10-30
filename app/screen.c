@@ -1286,7 +1286,7 @@ static __attribute__((noinline)) void edit_page_draw(unsigned visible)
             else number(104, y, (int)value, 3, 2, TEXT, BACK);
             if (value) paint_fill(104, y + 18U, value * 124U / d->max, 2, ACCENT);
         }
-        text(8, 231, notice ? notice : "K1-K4 ADJUST  PRESETS PAGE  HOME EXIT", 1, DIM, BACK);
+        text(8, 224, notice ? notice : "K1-K4 EDIT  PRESETS PAGE  HOME EXIT", 1, DIM, BACK);
     } else if (visible == SOURCE) {
         text(8, 42, "SELECT SOUND SOURCE", 1, TEXT, BACK);
         text(8, 78, source_names[source_preview], 2, ACCENT, BACK);
