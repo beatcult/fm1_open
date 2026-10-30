@@ -3,6 +3,7 @@
 #include "engine.h"
 #include "synth_dx7.h"
 #include "bass303.h"
+#include "polivoks_mode.h"
 #include "drum808.h"
 #include "psg.h"
 #include "pluck.h"
@@ -1203,6 +1204,7 @@ int fm1_engine_render(int32_t *output, unsigned frames)
 {
     if (!output || frames != FM1_BLOCK_FRAMES) return -1;
     render(output, frames);
+    polivoks_audio_mix(output);   /* Polivoks mode: app-rendered voices join the mix before master gain */
     groove_sequence_click(output, frames);
     render_capacity = 0;
     for (unsigned track = 0; track < GROOVE_TRACKS; ++track)
