@@ -99,6 +99,8 @@ jobs:
           Write-Host "::notice title=size by section name::$secsum"
           $fm = (Select-String -Path "$env:RUNNER_TEMP\fw-build.log" -Pattern 'FM1:' -ErrorAction SilentlyContinue | Select-Object -First 1).Line
           Write-Host "::notice title=image line::$fm"
+          $mem = (Select-String -Path $map.FullName -Pattern '_MALLOC|_bss_|_heap|SRAM|sram_|_ram_end|_ram_begin' | Select-Object -First 14 | ForEach-Object { ($_.Line -replace '\s+',' ').Trim() }) -join ' | '
+          Write-Host "::notice title=memory symbols::$mem"
           $mine = ($by.GetEnumerator() | Where-Object { $_.Key -match 'polivoks' } | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ' | '
           Write-Host "::notice title=polivoks objects::$mine"
           $big = ($sec | Sort-Object s -Descending | Select-Object -First 22 | ForEach-Object { "$($_.n)=$($_.s)($($_.f))" }) -join ' | '
