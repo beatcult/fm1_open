@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only WITH GPL-3.0-linking-exception */
+#include "polivoks_mode.h"
 #include "instrument.h"
 #include "fm_patch.h"
 #include "version.h"
@@ -123,7 +124,9 @@ static void text(unsigned x, unsigned y, const char *s, unsigned scale, uint16_t
 }
 /* Eight tracks stay visible on HOME. SEQ maps the sixteen white keys to one
  * quarter of the 64-step pattern. All drawing and edits run on app_control. */
-enum { OVERVIEW, STEPS, FM_EDIT, FM_ENV, FM_LFO, TONE_EDIT, MIX, BLE, PROJECT, NAME, EFFECTS, SOURCE, ACTIONS, STEP_EDIT, RHYTHM, FM_QUICK, PRESET_BROWSER, ARP_EDIT, STARTUP };
+enum { OVERVIEW, STEPS, FM_EDIT, FM_ENV, FM_LFO, TONE_EDIT, MIX, BLE, PROJECT, NAME, EFFECTS, SOURCE, ACTIONS, STEP_EDIT, RHYTHM, FM_QUICK, PRESET_BROWSER, ARP_EDIT, STARTUP, POLIVOKS_PAGE };
+/* The source selector offers one extra entry after the engine sources: the Polivoks. */
+#define POLIVOKS_SOURCES (GROOVE_SOURCES + 1U)
 enum { OCT_DOWN, OCT_UP, FX, SCL, ENV, LFO, EDIT, GLO, HOME, SAVE, ARP, SEQ, PLAY, REC };
 #define BUTTON(b) (1U << (b))
 static const uint16_t colors[8] = {0x3c9f, 0x07bf, 0x4eae, 0x06d4, 0xac9f, 0xed18, 0xff06, 0xfba5};
@@ -146,13 +149,13 @@ static const struct fm_page {
     {"COMMON", {"ALG", "FDBACK", "OSC SYNC", "TRANS"}, {134, 135, 136, 144}, 0},
     {"LFO", {"WAVE", "SPEED", "PMD", "AMD"}, {142, 137, 139, 140}, 0},
     {"LFO MOD", {"DELAY", "P SENS", "LFO SYNC", "OSC SYNC"}, {138, 143, 141, 136}, 0}};
-static const char *const source_names[] = {"DX7 FM", "BASS 303", "DRUM 808", "PSG", "PLUCK", "SAMPLER"};
+static const char *const source_names[] = {"DX7 FM", "BASS 303", "DRUM 808", "PSG", "PLUCK", "SAMPLER", "POLIVOKS"};
 static const char *const actions[] = {"STEP DETAILS", "RHYTHM / RECORD", "COPY STEP", "COPY PAGE", "COPY TRACK",
     "PASTE STEP", "PASTE PAGE", "PASTE TRACK", "CLEAR STEP", "CLEAR PAGE", "CLEAR TRACK",
     "REPEAT TO 32", "REPEAT TO 48", "REPEAT TO 64", "UNDO / REDO", "COPY TIMBRE", "PASTE TIMBRE",
     "DX7 PATCH NAME", "BLUETOOTH / CLOCK", "STOP ALL / REWIND"};
 enum { ACTION_COUNT = sizeof actions / sizeof actions[0] };
-static unsigned source_preview, action, action_confirm, tone_clip_ready;
+static unsigned source_preview, action, action_confirm, tone_clip_ready, pv_page;
 static struct groove_preset tone_clip;
 static uint32_t midi_seen[8], midi_until[8];
 static uint8_t midi_active[8];
@@ -1256,6 +1259,10 @@ static __attribute__((noinline)) void edit_page_draw(unsigned visible)
             sig = sig * 33U + frame_views[track].program;
             sig = sig * 33U + frame_views[track].modified;
         }
+        if (visible == POLIVOKS_PAGE) {
+            sig = sig * 33U + pv_page;
+            for (unsigned i = 0; i < POLIVOKS_NPARAMS; ++i) sig = sig * 33U + polivoks_param_get(i);
+        }
         if (visible == ARP_EDIT) {
             sig = sig * 33U + track + (groove_arp_enabled(track) << 8) + (arp_page << 9);
             for (unsigned i = 0; i < 6; ++i) sig = sig * 33U + groove_arp_setting(track, i);
@@ -1265,12 +1272,26 @@ static __attribute__((noinline)) void edit_page_draw(unsigned visible)
     }
     paint_fill(0, 32, 240, 208, BACK);
     memset(cache->foot_cache, 0xff, sizeof cache->foot_cache);
-    if (visible == SOURCE) {
+    if (visible == POLIVOKS_PAGE) {
+        text(8, 40, "POLIVOKS", 2, ACCENT, BACK);
+        text(160, 44, "PAGE", 1, DIM, BACK);
+        number(196, 44, (int)pv_page + 1, 1, 1, TEXT, BACK);
+        text(206, 44, "/3", 1, DIM, BACK);
+        for (unsigned i = 0; i < 4; ++i) {
+            const fm1_param_t *d = polivoks_param((int)(pv_page * 4U + i));
+            unsigned value = polivoks_param_get(pv_page * 4U + i), y = 80U + i * 30U;
+            text(8, y, d->name, 1, DIM, BACK);
+            if (d->names) text(104, y, d->names[value], 2, TEXT, BACK);
+            else number(104, y, (int)value, 3, 2, TEXT, BACK);
+            if (value) paint_fill(104, y + 18U, value * 124U / d->max, 2, ACCENT);
+        }
+        text(8, 231, notice ? notice : "K1-K4 ADJUST  PRESETS PAGE  HOME EXIT", 1, DIM, BACK);
+    } else if (visible == SOURCE) {
         text(8, 42, "SELECT SOUND SOURCE", 1, TEXT, BACK);
         text(8, 78, source_names[source_preview], 2, ACCENT, BACK);
         text(8, 120, "SAVE APPLY  HOME CANCEL", 1, TEXT, BACK);
-        text(8, 148, "NEW SOURCE RESETS ITS TIMBRE", 1, DIM, BACK);
-        text(8, 165, "DRUM / PITCH CHANGE CLEARS STEPS", 1, AMBER, BACK);
+        text(8, 148, source_preview == GROOVE_SOURCES ? "2-VOICE SYNTH - HOME EXITS" : "NEW SOURCE RESETS ITS TIMBRE", 1, DIM, BACK);
+        text(8, 165, source_preview == GROOVE_SOURCES ? "KEYS AND MIDI PLAY POLIVOKS" : "DRUM / PITCH CHANGE CLEARS STEPS", 1, source_preview == GROOVE_SOURCES ? DIM : AMBER, BACK);
         text(8, 196, source_result ? "NOT ENOUGH MEMORY - RETRY" : "UNDO IN HOLD SEQ MENU", 1, source_result ? AMBER : DIM, BACK);
         text(8, 231, "ALGO / K2 CHOOSE  SAVE APPLY", 1, DIM, BACK);
     } else if (visible == ACTIONS) {
@@ -1933,7 +1954,7 @@ static int apply_controls(const struct fm1_controls *controls, uint32_t now,
     if ((controls->buttons & BUTTON(HOME)) && controls->encoders[6] &&
         !(controls->buttons & BUTTON(PLAY))) {
         source_preview = (unsigned)((int)groove_source_type(track) +
-            controls->encoders[6] % GROOVE_SOURCES + GROOVE_SOURCES) % GROOVE_SOURCES;
+            controls->encoders[6] % POLIVOKS_SOURCES + POLIVOKS_SOURCES) % POLIVOKS_SOURCES;
         page = SOURCE; source_result = 0;
         goto controls_done;
     }
@@ -2087,9 +2108,30 @@ static int apply_controls(const struct fm1_controls *controls, uint32_t now,
         }
         goto controls_done;
     }
+    if (page == POLIVOKS_PAGE) {
+        play_handled = 1;                                   /* the sequencer is not part of this mode */
+        pv_page = (unsigned)clamp((int)pv_page + controls->encoders[6], 0, 2);
+        for (unsigned i = 0; i < 4; ++i) {
+            int turn = controls->encoders[2 + i];
+            if (!turn) continue;
+            unsigned parameter = pv_page * 4U + i;
+            const fm1_param_t *d = polivoks_param((int)parameter);
+            int step = d->max > 4 ? fm_encoder_delta(2 + i, turn) : (turn > 0) - (turn < 0);
+            polivoks_param_set(parameter, (unsigned)clamp((int)polivoks_param_get(parameter) + step, 0, d->max));
+        }
+        goto controls_done;
+    }
     if (page == SOURCE) {
         int delta = controls->encoders[0] + controls->encoders[1] + controls->encoders[3] + controls->encoders[6];
-        source_preview = (unsigned)((int)source_preview + delta % GROOVE_SOURCES + GROOVE_SOURCES) % GROOVE_SOURCES;
+        source_preview = (unsigned)((int)source_preview + delta % (int)POLIVOKS_SOURCES + (int)POLIVOKS_SOURCES) % POLIVOKS_SOURCES;
+        if ((pressed & BUTTON(SAVE)) && source_preview == GROOVE_SOURCES) {
+            /* Polivoks mode lasts while its page is open; HOME leaves it. */
+            blocked_keys |= controls->keys;
+            if (!release_keys()) return 0;
+            polivoks_mode_set(1);
+            pv_page = 0; source_result = 0; page = POLIVOKS_PAGE;
+            goto controls_done;
+        }
         if (pressed & BUTTON(SAVE)) {
             source_result = groove_source_set(track, source_preview);
             if (!source_result) {
@@ -2558,6 +2600,7 @@ controls_done:
         }
     }
     if (page != TONE_EDIT && groove_pad_count(track)) drum_parts[track] = (uint8_t)drum;
+    if (page != POLIVOKS_PAGE && polivoks_mode_enabled()) polivoks_mode_set(0);
     return 1;
 }
 
