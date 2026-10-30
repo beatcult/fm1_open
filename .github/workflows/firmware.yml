@@ -121,9 +121,32 @@ jobs:
           $msg = (($err + '---' + $lines) | ForEach-Object { $_.Trim() } | Select-Object -First 50) -join ' | '
           Write-Host "::error title=web build log::$msg"
 
+      - name: Package flashable firmware and workbench
+        id: pkg
+        shell: pwsh
+        env:
+          FM1_SOURCE_URL: https://github.com/${{ github.repository }}/archive/${{ github.sha }}.zip
+          FM1_PI32_TOOLCHAIN: C:\JL\pi32
+        run: |
+          $log = "$env:RUNNER_TEMP\pkg-build.log"
+          try { ./build.bat --package *>&1 | Tee-Object -FilePath $log; if ($LASTEXITCODE) { throw "build.bat --package exit $LASTEXITCODE" } }
+          catch { $_ | Out-String | Tee-Object -FilePath $log -Append; throw }
+          Get-ChildItem build -Recurse -Include *.fwsc,FM1-Official-Open-Source.html | ForEach-Object { Write-Host "::notice title=package output::$($_.FullName) $($_.Length)" }
+
+      - name: Report package errors as annotations
+        if: failure() && steps.pkg.outcome == 'failure'
+        shell: pwsh
+        run: |
+          $lines = Get-Content "$env:RUNNER_TEMP\pkg-build.log" -Tail 40 -ErrorAction SilentlyContinue
+          $msg = ($lines | ForEach-Object { $_.Trim() } | Select-Object -First 40) -join ' | '
+          Write-Host "::error title=package log::$msg"
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: fm1-build
-          path: build/
+          name: fm1-polivoks-firmware
+          path: |
+            build/dx7/generated/*.fwsc
+            build/official-web/FM1-Official-Open-Source.html
+            build/preview/index.html
           if-no-files-found: warn
