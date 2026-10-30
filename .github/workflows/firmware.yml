@@ -129,7 +129,12 @@ jobs:
           FM1_PI32_TOOLCHAIN: C:\JL\pi32
         run: |
           $log = "$env:RUNNER_TEMP\pkg-build.log"
-          try { ./build.bat --package *>&1 | Tee-Object -FilePath $log; if ($LASTEXITCODE) { throw "build.bat --package exit $LASTEXITCODE" } }
+          # build.bat launches Windows PowerShell 5.1, which cannot load Get-FileHash from a pwsh 7 module path on
+          # the runner; call the same scripts directly under pwsh instead.
+          try {
+            ./tools/Build-Web.ps1 *>&1 | Tee-Object -FilePath $log
+            ./sdk/Build.ps1 -Package -Toolchain 'C:\JL\pi32' *>&1 | Tee-Object -FilePath $log -Append
+          }
           catch { $_ | Out-String | Tee-Object -FilePath $log -Append; throw }
           Get-ChildItem build -Recurse -Include *.fwsc,FM1-Official-Open-Source.html | ForEach-Object { Write-Host "::notice title=package output::$($_.FullName) $($_.Length)" }
 
