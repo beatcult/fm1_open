@@ -86,6 +86,45 @@ int main(int argc, char **argv)
     }
     CHECK(brightness[1] * 4 < brightness[0], "low cutoff should be much darker than high cutoff");
 
+    /* 3b. looping envelope: with Loop on and no sustain the attack restarts while the key is held */
+    for (int pass = 0; pass < 2; ++pass) {
+        polivoks_bank_init(b);
+        polivoks_bank_set(b, POLIVOKS_SUSTAIN, 0); polivoks_bank_set(b, POLIVOKS_DECAY, 40);
+        polivoks_bank_set(b, POLIVOKS_ATTACK, 0); polivoks_bank_set(b, POLIVOKS_LOOP, pass ? POLIVOKS_LOOP_AMP : POLIVOKS_LOOP_OFF);
+        polivoks_bank_note(b, 48, 110, 0);
+        unsigned restarts = 0, last = 0;
+        for (int blk = 0; blk < 700; ++blk) {
+            int32_t tmp[POLIVOKS_FRAMES] = {0}; polivoks_bank_render(b, tmp);
+            unsigned st = b->v[0].gate ? b->v[0].stage : b->v[1].stage;
+            if (st == 1 && last == 2) ++restarts;
+            last = st;
+        }
+        printf("loop %s: %u restarts in 2 s\n", pass ? "on" : "off", restarts);
+        if (pass) CHECK(restarts >= 3, "looping envelope should restart repeatedly (%u)", restarts);
+        else CHECK(restarts == 0, "no looping expected with Loop off (%u)", restarts);
+    }
+
+    /* 3c. LFO on the filter makes the brightness move over time; depth 0 does not */
+    double swing[2];
+    for (int pass = 0; pass < 2; ++pass) {
+        polivoks_bank_init(b);
+        polivoks_bank_set(b, POLIVOKS_ENVAMT, 0); polivoks_bank_set(b, POLIVOKS_SUSTAIN, 127); polivoks_bank_set(b, POLIVOKS_FSUSTAIN, 0);
+        polivoks_bank_set(b, POLIVOKS_LFOTARGET, POLIVOKS_TARGET_FILTER); polivoks_bank_set(b, POLIVOKS_LFORATE, 60);
+        polivoks_bank_set(b, POLIVOKS_LFODEPTH, pass ? 127 : 0); polivoks_bank_set(b, POLIVOKS_CUTOFF, 60);
+        polivoks_bank_note(b, 45, 127, 0);
+        double lo = 1e9, hi = 0;
+        for (int blk = 0; blk < 800; ++blk) {
+            int32_t tmp[POLIVOKS_FRAMES] = {0}; polivoks_bank_render(b, tmp);
+            if (blk < 100) continue;
+            double d = 0, e = 1e-12;
+            for (unsigned i = 1; i < POLIVOKS_FRAMES; ++i) { double x = tmp[i] / Q23, dx = (tmp[i] - tmp[i - 1]) / Q23; d += dx * dx; e += x * x; }
+            double br = sqrt(d / e); if (br < lo) lo = br; if (br > hi) hi = br;
+        }
+        swing[pass] = hi / lo;
+        printf("lfo depth %s: brightness swing x%.2f\n", pass ? "full" : "zero", swing[pass]);
+    }
+    CHECK(swing[1] > 2.0 * swing[0], "LFO should move the filter (swing %.2f vs %.2f)", swing[1], swing[0]);
+
     /* 4. stability: random parameters, notes and wheel for a long run */
     srand(1234);
     for (int trial = 0; trial < 300; ++trial) {

@@ -1274,12 +1274,13 @@ static __attribute__((noinline)) void edit_page_draw(unsigned visible)
     memset(cache->foot_cache, 0xff, sizeof cache->foot_cache);
     if (visible == POLIVOKS_PAGE) {
         text(8, 40, "POLIVOKS", 2, ACCENT, BACK);
-        text(160, 44, "PAGE", 1, DIM, BACK);
+        static const char *const titles[POLIVOKS_PAGES] = {"FILTER", "OSCILLATORS", "AMP ENVELOPE", "FILTER ENVELOPE", "MODULATOR", "LOOP / MIX"};
+        text(8, 62, titles[pv_page], 1, TEXT, BACK);
         number(196, 44, (int)pv_page + 1, 1, 1, TEXT, BACK);
-        text(206, 44, "/3", 1, DIM, BACK);
+        text(206, 44, "/6", 1, DIM, BACK);
         for (unsigned i = 0; i < 4; ++i) {
             const fm1_param_t *d = polivoks_param((int)(pv_page * 4U + i));
-            unsigned value = polivoks_param_get(pv_page * 4U + i), y = 80U + i * 30U;
+            unsigned value = polivoks_param_get(pv_page * 4U + i), y = 86U + i * 29U;
             text(8, y, d->name, 1, DIM, BACK);
             if (d->names) text(104, y, d->names[value], 2, TEXT, BACK);
             else number(104, y, (int)value, 3, 2, TEXT, BACK);
@@ -2110,7 +2111,7 @@ static int apply_controls(const struct fm1_controls *controls, uint32_t now,
     }
     if (page == POLIVOKS_PAGE) {
         play_handled = 1;                                   /* the sequencer is not part of this mode */
-        pv_page = (unsigned)clamp((int)pv_page + controls->encoders[6], 0, 2);
+        pv_page = (unsigned)clamp((int)pv_page + controls->encoders[6], 0, (int)POLIVOKS_PAGES - 1);
         for (unsigned i = 0; i < 4; ++i) {
             int turn = controls->encoders[2 + i];
             if (!turn) continue;
